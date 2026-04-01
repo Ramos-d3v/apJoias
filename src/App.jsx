@@ -13,7 +13,7 @@ function App() {
         <Hero />
         <Highlights />
         <About />
-        <Contact /> {/* <-- Adicione o componente aqui, antes do Footer */}
+        <Contact /> 
       </main>
       <Footer />
     </div>
