@@ -8,41 +8,58 @@ export const ProductProvider = ({ children }) => {
   const [products, setProducts] = useState([]);
   const [categoriaSelecionada, setCategoriaSelecionada] = useState("Todas");
 
+  // Puxa a URL base do .env
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
   useEffect(() => {
     fetchProducts();
   }, []);
 
+  // Qualquer pessoa pode ver os produtos (Não precisa de token)
   const fetchProducts = async () => {
     try {
-      const response = await fetch('http://localhost:3000/api/products');
-      const data = await response.json();
-      setProducts(data);
+      const response = await fetch(`${apiUrl}/products`);
+      if(response.ok) {
+        const data = await response.json();
+        setProducts(data);
+      }
     } catch (error) {
-      console.error("Erro ao buscar:", error);
+      console.error("Erro ao buscar produtos:", error);
     }
   };
 
-  // Usamos FormData agora por causa do upload de arquivos
+  // Função auxiliar para pegar o token
+  const getAuthHeaders = () => {
+    const token = localStorage.getItem('adminToken');
+    return { 'Authorization': `Bearer ${token}` };
+  };
+
+  // Requer Token
   const addProduct = async (formData) => {
-    await fetch('http://localhost:3000/api/products', {
+    await fetch(`${apiUrl}/products`, {
       method: 'POST',
+      headers: getAuthHeaders(), // <-- Enviando a "chave" da porta
       body: formData,
     });
     fetchProducts();
   };
 
+  // Requer Token
   const updateProduct = async (id, formData) => {
-    await fetch(`http://localhost:3000/api/products/${id}`, {
+    await fetch(`${apiUrl}/products/${id}`, {
       method: 'PUT',
+      headers: getAuthHeaders(),
       body: formData,
     });
     fetchProducts();
   };
 
+  // Requer Token
   const deleteProduct = async (id) => {
     if(window.confirm("Tem certeza que deseja excluir esta joia?")) {
-      await fetch(`http://localhost:3000/api/products/${id}`, {
+      await fetch(`${apiUrl}/products/${id}`, {
         method: 'DELETE',
+        headers: getAuthHeaders(),
       });
       fetchProducts();
     }

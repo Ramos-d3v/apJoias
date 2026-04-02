@@ -20,7 +20,7 @@ const Admin = () => {
   const categorias = ["Pulseira", "Pingentes", "Escapularios", "Correntes", "Brincos", "Anéis"];
 
   const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
+    localStorage.removeItem("adminToken");
     navigate("/login");
   };
 
