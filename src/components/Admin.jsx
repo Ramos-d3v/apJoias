@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProducts } from "../context/ProductContext";
-import { LogOut, PlusCircle, PackagePlus, Edit2, Trash2, X } from "lucide-react";
+import { LogOut, PlusCircle, PackagePlus, Edit2, Trash2, X, Wand2, Loader2, AlertCircle } from "lucide-react";
 
 const Admin = () => {
   const navigate = useNavigate();
@@ -15,9 +15,38 @@ const Admin = () => {
     quantidade: 1,
     imagemUrl: ""
   });
+  
   const [imagemFile, setImagemFile] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isProcessingImg, setIsProcessingImg] = useState(false);
+  
+  // NOVO: Estado para o limite da API
+  const [apiUsage, setApiUsage] = useState({ used: 0, limit: 25 });
 
   const categorias = ["Pulseira", "Pingentes", "Escapularios", "Correntes", "Brincos", "Anéis"];
+
+  // NOVO: Busca o uso atual da API assim que a página carrega
+  useEffect(() => {
+    const fetchApiUsage = async () => {
+      try {
+        const token = localStorage.getItem('adminToken');
+        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+        
+        const res = await fetch(`${apiUrl}/remove-bg/usage`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setApiUsage(data);
+        }
+      } catch (err) {
+        console.error("Erro ao buscar uso da API", err);
+      }
+    };
+    
+    fetchApiUsage();
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem("adminToken");
@@ -30,7 +59,84 @@ const Admin = () => {
   };
 
   const handleFileChange = (e) => {
-    setImagemFile(e.target.files[0]);
+    const file = e.target.files[0];
+    setImagemFile(file);
+    if (file) {
+      setImagePreview(URL.createObjectURL(file));
+    } else {
+      setImagePreview(null);
+    }
+  };
+
+  const handleRemoveBackground = async () => {
+    if (!imagemFile) return alert('Por favor, selecione uma imagem primeiro.');
+    if (apiUsage.used >= apiUsage.limit) return alert('Você atingiu o limite máximo de remoções de fundo.');
+
+    setIsProcessingImg(true);
+    const formData = new FormData();
+    formData.append('image_file', imagemFile);
+
+    try {
+      const token = localStorage.getItem('adminToken');
+      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+      const response = await fetch(`${apiUrl}/remove-bg`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Falha ao processar a imagem no servidor.');
+      }
+
+      // Atualiza o contador de uso da API visualmente
+      setApiUsage(prev => ({ ...prev, used: prev.used + 1 }));
+
+      const blob = await response.blob();
+      const removedBgUrl = URL.createObjectURL(blob);
+
+      const img = new Image();
+      img.src = removedBgUrl;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const targetSize = 1080;
+        canvas.width = targetSize;
+        canvas.height = targetSize;
+        const ctx = canvas.getContext('2d');
+        
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, targetSize, targetSize);
+        
+        const maxDimension = targetSize * 0.8;
+        const imgAspectRatio = img.width / img.height;
+        let newWidth, newHeight;
+        
+        if (imgAspectRatio > 1) {
+          newWidth = maxDimension;
+          newHeight = maxDimension / imgAspectRatio;
+        } else {
+          newHeight = maxDimension;
+          newWidth = maxDimension * imgAspectRatio;
+        }
+        
+        const x = (targetSize - newWidth) / 2;
+        const y = (targetSize - newHeight) / 2;
+        ctx.drawImage(img, x, y, newWidth, newHeight);
+
+        canvas.toBlob((processedBlob) => {
+          const processedFile = new File([processedBlob], "joia_padronizada.jpg", { type: "image/jpeg" });
+          setImagemFile(processedFile);
+          setImagePreview(URL.createObjectURL(processedBlob));
+          setIsProcessingImg(false);
+        }, 'image/jpeg', 0.95);
+      };
+
+    } catch (err) {
+      alert(err.message);
+      setIsProcessingImg(false);
+    }
   };
 
   const handleEdit = (prod) => {
@@ -39,9 +145,10 @@ const Admin = () => {
       nome: prod.nome,
       categoria: prod.categoria,
       quantidade: prod.quantidade,
-      imagemUrl: "" // Resetamos a URL, pois a original já está no banco
+      imagemUrl: "" 
     });
     setImagemFile(null);
+    setImagePreview(prod.imagem);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -49,12 +156,12 @@ const Admin = () => {
     setEditingId(null);
     setProduct({ nome: "", categoria: "Pulseira", quantidade: 1, imagemUrl: "" });
     setImagemFile(null);
+    setImagePreview(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Usamos FormData para enviar texto + arquivo juntos
     const formData = new FormData();
     formData.append("nome", product.nome);
     formData.append("categoria", product.categoria);
@@ -76,9 +183,12 @@ const Admin = () => {
     cancelEdit();
   };
 
+  // Calcula a porcentagem para a barra de progresso
+  const usagePercentage = Math.min((apiUsage.used / apiUsage.limit) * 100, 100);
+  const isLimitReached = apiUsage.used >= apiUsage.limit;
+
   return (
     <div className="flex min-h-screen bg-zinc-950 text-zinc-50 font-sans">
-      {/* Menu Lateral */}
       <div className="w-64 bg-zinc-900 border-r border-zinc-800 flex flex-col justify-between hidden md:flex">
         <div>
           <div className="p-8 text-2xl font-serif font-bold text-white tracking-wider border-b border-zinc-800">
@@ -100,11 +210,9 @@ const Admin = () => {
         </div>
       </div>
 
-      {/* Área Principal */}
       <div className="flex-1 p-6 md:p-10 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
           
-          {/* Formulário (Criar / Editar) */}
           <div className="mb-12 bg-zinc-900 border border-zinc-800 p-8 rounded-lg relative overflow-hidden shadow-xl">
             <div className={`absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-${editingId ? 'blue-500' : '[#D4AF37]'} to-transparent opacity-50`}></div>
             
@@ -138,7 +246,6 @@ const Admin = () => {
                   <input type="number" name="quantidade" value={product.quantidade} onChange={handleChange} min="0" className="w-full bg-zinc-950 border border-zinc-800 rounded py-3 px-4 text-white focus:border-[#D4AF37] outline-none" required />
                 </div>
 
-                {/* Opção de Upload ou URL */}
                 <div className="flex flex-col gap-2">
                   <label className="block text-[#D4AF37] text-xs uppercase font-bold">Imagem da Joia</label>
                   
@@ -150,15 +257,60 @@ const Admin = () => {
                       className="text-xs text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-800 file:text-[#D4AF37] hover:file:bg-zinc-700 cursor-pointer w-full"
                     />
                   </div>
-                  
-                  <span className="text-zinc-500 text-xs text-center">OU</span>
+
+                  {imagemFile && (
+                    <div className="mt-1 flex flex-col gap-1 border border-zinc-800/80 bg-zinc-950/50 p-3 rounded">
+                      <button
+                        type="button"
+                        onClick={handleRemoveBackground}
+                        disabled={isProcessingImg || isLimitReached}
+                        className={`flex items-center justify-center gap-2 w-full text-white text-xs font-bold py-2 rounded transition-colors uppercase tracking-wider ${
+                          isLimitReached ? 'bg-zinc-700 cursor-not-allowed text-zinc-400' : 'bg-indigo-600 hover:bg-indigo-500 disabled:bg-indigo-800'
+                        }`}
+                      >
+                        {isProcessingImg ? <Loader2 size={14} className="animate-spin" /> : <Wand2 size={14} />}
+                        {isLimitReached ? "Limite da API Atingido" : isProcessingImg ? "Processando..." : "Padronizar Imagem (Fundo Preto)"}
+                      </button>
+                      
+                      {/* INDICADOR DE USO DA API */}
+                      <div className="flex flex-col gap-1 mt-2">
+                        <div className="flex justify-between items-center text-[10px] uppercase tracking-widest text-zinc-400">
+                          <span>Uso da IA (Remove.bg)</span>
+                          <span className={isLimitReached ? 'text-red-400 font-bold' : ''}>
+                            {apiUsage.used} / {apiUsage.limit}
+                          </span>
+                        </div>
+                        <div className="w-full bg-zinc-800 rounded-full h-1.5 overflow-hidden">
+                          <div 
+                            className={`h-1.5 rounded-full ${usagePercentage > 80 ? 'bg-red-500' : 'bg-indigo-500'}`} 
+                            style={{ width: `${usagePercentage}%` }}
+                          ></div>
+                        </div>
+                        {isLimitReached && (
+                          <div className="flex items-center gap-1 text-red-400 text-[10px] mt-1">
+                            <AlertCircle size={12} />
+                            <span>Contate o administrador para aumentar o limite.</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <span className="text-zinc-500 text-xs text-center my-1">OU</span>
                   
                   <input type="text" name="imagemUrl" value={product.imagemUrl} onChange={handleChange} placeholder="Cole uma URL da internet..." className="w-full bg-zinc-950 border border-zinc-800 rounded py-3 px-4 text-white focus:border-[#D4AF37] outline-none text-sm" disabled={imagemFile !== null} />
                 </div>
+                
+                {imagePreview && (
+                  <div className="md:col-span-2 flex flex-col items-center border border-zinc-800 rounded p-4 bg-zinc-950/50">
+                    <span className="text-zinc-400 text-xs uppercase tracking-widest mb-3">Pré-visualização</span>
+                    <img src={imagePreview} alt="Preview da Joia" className="w-40 h-40 object-contain rounded border border-zinc-800 shadow-lg" />
+                  </div>
+                )}
               </div>
 
               <div className="mt-6 border-t border-zinc-800 pt-6">
-                <button type="submit" className={`w-full md:w-auto flex items-center justify-center gap-2 text-zinc-950 px-8 py-3 uppercase tracking-widest text-sm font-bold rounded transition-colors ${editingId ? 'bg-blue-500 hover:bg-blue-600' : 'bg-[#D4AF37] hover:bg-[#B8860B]'}`}>
+                <button type="submit" disabled={isProcessingImg} className={`w-full md:w-auto flex items-center justify-center gap-2 text-zinc-950 px-8 py-3 uppercase tracking-widest text-sm font-bold rounded transition-colors disabled:opacity-50 ${editingId ? 'bg-blue-500 hover:bg-blue-600' : 'bg-[#D4AF37] hover:bg-[#B8860B]'}`}>
                   {editingId ? <Edit2 size={18} /> : <PlusCircle size={18} />}
                   {editingId ? "Salvar Alterações" : "Cadastrar Item"}
                 </button>
