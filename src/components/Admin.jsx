@@ -145,7 +145,7 @@ const Admin = () => {
       nome: prod.nome,
       categoria: prod.categoria,
       quantidade: prod.quantidade,
-      imagemUrl: "" 
+      imagemUrl: prod.imagem 
     });
     setImagemFile(null);
     setImagePreview(prod.imagem);
